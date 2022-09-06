@@ -33,32 +33,32 @@ rustup update
 # Start install ppaass
 sudo ps -ef | grep ppaass-proxy | grep -v grep | awk '{print $2}' | xargs sudo kill
 
-sudo rm -rf /ppaass/build
-sudo rm -rf /ppaass/sourcecode
+sudo rm -rf /ppaass-proxy/build
+sudo rm -rf /ppaass-proxy/sourcecode
 # Build
-sudo mkdir /ppaass
-sudo mkdir /ppaass/sourcecode
-sudo mkdir /ppaass/build
+sudo mkdir /ppaass-proxy
+sudo mkdir /ppaass-proxy/sourcecode
+sudo mkdir /ppaass-proxy/build
 
-# Pull ppaass-rust
-cd /ppaass/sourcecode
-sudo git clone https://github.com/quhxuxm/ppaass.git ppaass
-sudo chmod 777 ppaass
-cd /ppaass/sourcecode/ppaass
+# Pull ppaass-proxy
+cd /ppaass-proxy/sourcecode
+sudo git clone https://github.com/quhxuxm/ppaass-proxy.git ppaass-proxy
+sudo chmod 777 ppaass-proxy
+cd /ppaass-proxy/sourcecode/ppaass-proxy
 sudo git pull
 export RUST_BACKTRACE=1
-cargo build --package proxy --release
+cargo build --release
 
 # ps -ef | grep gradle | grep -v grep | awk '{print $2}' | xargs kill -9
-sudo cp /ppaass/sourcecode/ppaass/ppaass-proxy.toml /ppaass/build
-sudo cp /ppaass/sourcecode/ppaass/ppaass-proxy-log.toml /ppaass/build
-sudo cp -r /ppaass/sourcecode/ppaass/rsa /ppaass/build
-sudo cp /ppaass/sourcecode/ppaass/*.pem /ppaass/build
-sudo cp /ppaass/sourcecode/ppaass/target/release/ppaass-proxy /ppaass/build
-sudo cp /ppaass/sourcecode/ppaass/ppaass-proxy-start.sh /ppaass/build/
+sudo cp /ppaass-proxy/sourcecode/ppaass-proxy/ppaass-proxy.toml /ppaass-proxy/build
+sudo cp /ppaass-proxy/sourcecode/ppaass-proxy/ppaass-proxy-log.toml /ppaass-proxy/build
+sudo cp -r /ppaass-proxy/sourcecode/ppaass-proxy/rsa /ppaass-proxy/build
+sudo cp /ppaass-proxy/sourcecode/ppaass-proxy/*.pem /ppaass-proxy/build
+sudo cp /ppaass-proxy/sourcecode/ppaass-proxy/target/release/ppaass-proxy /ppaass-proxy/build
+sudo cp /ppaass-proxy/sourcecode/ppaass-proxy/ppaass-proxy-start.sh /ppaass-proxy/build/
 
-sudo chmod 777 /ppaass/build
-cd /ppaass/build
+sudo chmod 777 /ppaass-proxy/build
+cd /ppaass-proxy/build
 ls -l
 
 sudo chmod 777 ppaass-proxy
