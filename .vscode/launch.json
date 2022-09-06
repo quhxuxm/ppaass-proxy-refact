@@ -19,7 +19,10 @@
                     "kind": "bin"
                 }
             },
-            "args": [],
+            "args": [
+                "-c",
+                "/mnt/d/Git/ppaass-proxy/ppaass-proxy.toml"
+            ],
             "cwd": "${workspaceFolder}"
         },
         {
