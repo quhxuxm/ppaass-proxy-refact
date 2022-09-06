@@ -53,7 +53,6 @@ cargo build --release
 sudo cp /ppaass-proxy/sourcecode/ppaass-proxy/ppaass-proxy.toml /ppaass-proxy/build
 sudo cp /ppaass-proxy/sourcecode/ppaass-proxy/ppaass-proxy-log.toml /ppaass-proxy/build
 sudo cp -r /ppaass-proxy/sourcecode/ppaass-proxy/rsa /ppaass-proxy/build
-sudo cp /ppaass-proxy/sourcecode/ppaass-proxy/*.pem /ppaass-proxy/build
 sudo cp /ppaass-proxy/sourcecode/ppaass-proxy/target/release/ppaass-proxy /ppaass-proxy/build
 sudo cp /ppaass-proxy/sourcecode/ppaass-proxy/ppaass-proxy-start.sh /ppaass-proxy/build/
 
