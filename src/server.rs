@@ -105,7 +105,7 @@ impl ProxyServer {
                     };
                     if let Err(e) = server_socket.bind(local_socket_address) {
                         error!("Fail to bind server tcp socket on address {local_socket_address} because of error: {:#?}", e);
-                        return;
+                        panic!("Fail to bind server tcp socket on address {local_socket_address} because of error: {e:#?}");
                     }
                     let listener = match server_socket.listen(configuration.so_backlog().unwrap_or(1024)) {
                         Err(e) => {
