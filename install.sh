@@ -6,6 +6,7 @@ sudo apt upgrade -y
 sudo apt install gcc -y
 sudo apt install libfontconfig -y
 sudo apt install libfontconfig1-dev -y
+sudo apt install dos2unix -y
 sudo iptables -A INPUT -p tcp --dport 8080 -j ACCEPT
 sudo iptables -A INPUT -p tcp --dport 80 -j ACCEPT
 #sudo mkdir /opt/java
