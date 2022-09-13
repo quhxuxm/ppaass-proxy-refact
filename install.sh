@@ -62,6 +62,7 @@ ls -l
 
 sudo chmod 777 ppaass-proxy
 sudo chmod 777 *.sh
+dos2unix ./ppaass-proxy-start.sh
 
 #Start with the low configuration by default
 sudo nohup ./ppaass-proxy-start.sh >run.log 2>&1 &
