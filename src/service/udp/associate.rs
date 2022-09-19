@@ -18,8 +18,8 @@ use crate::config::ProxyConfig;
 
 #[allow(unused)]
 pub(crate) struct UdpAssociateFlowRequest<'a, T>
-where
-    T: RsaCryptoFetcher,
+    where
+        T: RsaCryptoFetcher,
 {
     pub connection_id: &'a str,
     pub message_id: &'a str,
@@ -32,8 +32,8 @@ where
 
 #[allow(unused)]
 pub(crate) struct UdpAssociateFlowResult<T>
-where
-    T: RsaCryptoFetcher,
+    where
+        T: RsaCryptoFetcher,
 {
     pub connection_id: String,
     pub message_id: String,
@@ -46,8 +46,8 @@ where
 
 #[allow(unused)]
 pub(crate) struct UdpAssociateFlowError<T>
-where
-    T: RsaCryptoFetcher,
+    where
+        T: RsaCryptoFetcher,
 {
     pub connection_id: String,
     pub message_id: String,
@@ -61,7 +61,7 @@ where
 pub(crate) struct UdpAssociateFlow;
 
 impl UdpAssociateFlow {
-    pub async fn exec<'a, T>(
+    pub async fn exec<T>(
         UdpAssociateFlowRequest {
             connection_id,
             message_id,
@@ -70,18 +70,18 @@ impl UdpAssociateFlow {
             message_framed_write,
             source_address,
             ..
-        }: UdpAssociateFlowRequest<'a, T>,
+        }: UdpAssociateFlowRequest<'_, T>,
         _configuration: &ProxyConfig,
     ) -> Result<UdpAssociateFlowResult<T>, UdpAssociateFlowError<T>>
-    where
-        T: RsaCryptoFetcher,
+        where
+            T: RsaCryptoFetcher,
     {
         info!("Udp associate success, connection id: [{connection_id}], source address:[{source_address:?}].");
         let payload_encryption_type = match PayloadEncryptionTypeSelector::select(PayloadEncryptionTypeSelectRequest {
             encryption_token: generate_uuid().into(),
             user_token: user_token.clone(),
         })
-        .await
+            .await
         {
             Err(e) => {
                 error!("Udp associate fail, connection id: [{connection_id}], source address: [{source_address:?}], error: {e:?}.");
@@ -94,10 +94,9 @@ impl UdpAssociateFlow {
                     source_address,
                     source: anyhow!(e),
                 });
-            },
+            }
             Ok(PayloadEncryptionTypeSelectResult { payload_encryption_type, .. }) => payload_encryption_type,
         };
-
         let udp_binded_socket = match UdpSocket::bind(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0))).await {
             Err(e) => {
                 error!("Udp associate fail because of bind udp socket, connection id: [{connection_id}], error : {e:#?}");
@@ -110,10 +109,9 @@ impl UdpAssociateFlow {
                     source_address,
                     source: anyhow!(e),
                 });
-            },
+            }
             Ok(v) => v,
         };
-
         let udp_associate_success_payload = MessagePayload {
             source_address: source_address.clone(),
             target_address: None,
@@ -129,7 +127,7 @@ impl UdpAssociateFlow {
             ref_id: Some(message_id),
             connection_id: Some(connection_id),
         })
-        .await
+            .await
         {
             Err(WriteMessageFramedError {
                 source, message_framed_write, ..
@@ -144,7 +142,7 @@ impl UdpAssociateFlow {
                     source_address,
                     source: anyhow!(source),
                 });
-            },
+            }
             Ok(WriteMessageFramedResult { message_framed_write }) => message_framed_write,
         };
         info!("Udp associate, success to write udp associate success response to connection [{connection_id}], source address: [{source_address:?}]");
