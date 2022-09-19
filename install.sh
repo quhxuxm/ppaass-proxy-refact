@@ -1,5 +1,5 @@
 #Prepare base env
-export RUSTUP_INIT_SKIP_PATH_CHECK=yes
+
 
 sudo apt update
 sudo apt upgrade -y
@@ -14,6 +14,8 @@ sudo iptables -A INPUT -p tcp --dport 80 -j ACCEPT
 #sudo apt install maven -y
 sudo apt install unzip -y
 sudo apt install git -y
+
+export RUSTUP_INIT_SKIP_PATH_CHECK=yes
 
 sudo curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 # sudo wget https://download.java.net/java/GA/jdk15.0.2/0d1cfde4252546c6931946de8db48ee2/7/GPL/openjdk-15.0.2_linux-x64_bin.tar.gz
