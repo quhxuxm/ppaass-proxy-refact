@@ -141,13 +141,13 @@ impl TcpRelayFlow {
         })
     }
 
-    async fn relay_proxy_to_target<'a, T>(
+    async fn relay_proxy_to_target<T>(
         TcpRelayProxyToTargetRequest {
             connection_id,
             agent_address,
             message_framed_read,
             target_write,
-        }: TcpRelayProxyToTargetRequest<'a, T>,
+        }: TcpRelayProxyToTargetRequest<'_, T>,
     ) -> Result<()>
         where
             T: RsaCryptoFetcher + Send + Sync + Debug + 'static,
@@ -217,7 +217,7 @@ impl TcpRelayFlow {
         }
     }
 
-    async fn relay_target_to_proxy<'a, T>(
+    async fn relay_target_to_proxy<T>(
         TcpRelayTargetToProxyRequest {
             connection_id,
             mut message_framed_write,
@@ -227,7 +227,7 @@ impl TcpRelayFlow {
             target_address,
             target_buffer_size,
             message_framed_buffer_size,
-        }: TcpRelayTargetToProxyRequest<'a, T>,
+        }: TcpRelayTargetToProxyRequest<'_, T>,
     ) -> Result<()>
         where
             T: RsaCryptoFetcher + Send + Sync + 'static,
