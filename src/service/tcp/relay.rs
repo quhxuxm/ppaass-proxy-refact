@@ -4,25 +4,24 @@ use std::net::SocketAddr;
 use anyhow::{anyhow, Result};
 use bytes::BytesMut;
 use futures::SinkExt;
+use ppaass_common::{
+    AgentMessagePayloadTypeValue, generate_uuid, MessageFramedRead, MessageFramedReader, MessageFramedWrite, MessageFramedWriter, MessagePayload, NetAddress,
+    PayloadEncryptionTypeSelector, PayloadEncryptionTypeSelectRequest, PayloadEncryptionTypeSelectResult, PayloadType, ProxyMessagePayloadTypeValue,
+    ReadMessageFramedError, ReadMessageFramedRequest, ReadMessageFramedResult, ReadMessageFramedResultContent, RsaCryptoFetcher, WriteMessageFramedError,
+    WriteMessageFramedRequest, WriteMessageFramedResult,
+};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpStream;
 use tracing::{debug, error};
-
-use ppaass_common::{
-    generate_uuid, AgentMessagePayloadTypeValue, MessageFramedRead, MessageFramedReader, MessageFramedWrite, MessageFramedWriter, MessagePayload, NetAddress,
-    PayloadEncryptionTypeSelectRequest, PayloadEncryptionTypeSelectResult, PayloadEncryptionTypeSelector, PayloadType, ProxyMessagePayloadTypeValue,
-    ReadMessageFramedError, ReadMessageFramedRequest, ReadMessageFramedResult, ReadMessageFramedResultContent, RsaCryptoFetcher, WriteMessageFramedError,
-    WriteMessageFramedRequest, WriteMessageFramedResult,
-};
 
 use crate::config::{self, ProxyConfig};
 
 #[allow(unused)]
 #[derive(Debug)]
 pub(crate) struct TcpRelayFlowRequest<'a, T>
-where
-    T: RsaCryptoFetcher,
+    where
+        T: RsaCryptoFetcher,
 {
     pub connection_id: &'a str,
     pub message_framed_read: MessageFramedRead<T, TcpStream>,
@@ -43,9 +42,10 @@ pub(crate) struct TcpRelayFlowResult<'a> {
     pub source_address: NetAddress,
     pub target_address: NetAddress,
 }
+
 struct TcpRelayProxyToTargetRequest<'a, T>
-where
-    T: RsaCryptoFetcher,
+    where
+        T: RsaCryptoFetcher,
 {
     connection_id: &'a str,
     agent_address: SocketAddr,
@@ -54,8 +54,8 @@ where
 }
 
 struct TcpRelayTargetToProxyRequest<'a, T>
-where
-    T: RsaCryptoFetcher,
+    where
+        T: RsaCryptoFetcher,
 {
     connection_id: &'a str,
     message_framed_write: MessageFramedWrite<T, TcpStream>,
@@ -66,6 +66,7 @@ where
     target_buffer_size: usize,
     message_framed_buffer_size: usize,
 }
+
 pub(crate) struct TcpRelayFlow;
 
 impl TcpRelayFlow {
@@ -82,8 +83,8 @@ impl TcpRelayFlow {
         }: TcpRelayFlowRequest<'a, T>,
         configuration: &ProxyConfig,
     ) -> Result<TcpRelayFlowResult<'a>>
-    where
-        T: RsaCryptoFetcher + Send + Sync + Debug + 'static,
+        where
+            T: RsaCryptoFetcher + Send + Sync + Debug + 'static,
     {
         let (target_read, target_write) = target_stream.into_split();
         {
@@ -97,7 +98,7 @@ impl TcpRelayFlow {
                     message_framed_read,
                     target_write,
                 })
-                .await
+                    .await
                 {
                     error!(
                         "Connection [{connection_id}] error happen when relay data from proxy to target, source address: [{source_address:?}], target address: [{target_address:?}], error: {e:#?}",
@@ -123,7 +124,7 @@ impl TcpRelayFlow {
                     target_buffer_size,
                     message_framed_buffer_size,
                 })
-                .await
+                    .await
                 {
                     error!(
                         "Connection [{connection_id}] error happen when relay data from target to proxy, source address: [{source_address:?}], target address: [{target_address:?}], error: {e:#?}"
@@ -144,21 +145,22 @@ impl TcpRelayFlow {
         TcpRelayProxyToTargetRequest {
             connection_id,
             agent_address,
-            mut message_framed_read,
-            mut target_write,
+            message_framed_read,
+            target_write,
         }: TcpRelayProxyToTargetRequest<'a, T>,
     ) -> Result<()>
-    where
-        T: RsaCryptoFetcher + Send + Sync + Debug + 'static,
+        where
+            T: RsaCryptoFetcher + Send + Sync + Debug + 'static,
     {
+        let mut message_framed_read = message_framed_read;
+        let mut target_write = target_write;
         loop {
-            let agent_data;
-            (message_framed_read, agent_data) = match MessageFramedReader::read(ReadMessageFramedRequest {
+            let (message_framed_read_return_back, agent_data) = match MessageFramedReader::read(ReadMessageFramedRequest {
                 connection_id,
                 message_framed_read,
                 timeout: None,
             })
-            .await
+                .await
             {
                 Err(ReadMessageFramedError { source, .. }) => {
                     let target_peer_addr = target_write.peer_addr();
@@ -169,7 +171,7 @@ impl TcpRelayFlow {
                     target_write.flush().await?;
                     target_write.shutdown().await?;
                     return Err(source.into());
-                },
+                }
                 Ok(ReadMessageFramedResult { content: None, .. }) => {
                     let target_peer_addr = target_write.peer_addr();
                     debug!(
@@ -179,19 +181,19 @@ impl TcpRelayFlow {
                     target_write.flush().await?;
                     target_write.shutdown().await?;
                     return Ok(());
-                },
+                }
                 Ok(ReadMessageFramedResult {
                     message_framed_read,
                     content:
-                        Some(ReadMessageFramedResultContent {
-                            message_payload:
-                                Some(MessagePayload {
-                                    payload_type: PayloadType::AgentPayload(AgentMessagePayloadTypeValue::TcpData),
-                                    data: Some(data),
-                                    ..
-                                }),
+                    Some(ReadMessageFramedResultContent {
+                        message_payload:
+                        Some(MessagePayload {
+                            payload_type: PayloadType::AgentPayload(AgentMessagePayloadTypeValue::TcpData),
+                            data: Some(data),
                             ..
                         }),
+                        ..
+                    }),
                 }) => (message_framed_read, data),
                 Ok(ReadMessageFramedResult { .. }) => {
                     let target_peer_addr = target_write.peer_addr();
@@ -207,10 +209,11 @@ impl TcpRelayFlow {
                         agent_address,
                         target_peer_addr
                     ));
-                },
+                }
             };
             target_write.write_all(agent_data.as_ref()).await?;
             target_write.flush().await?;
+            message_framed_read = message_framed_read_return_back;
         }
     }
 
@@ -218,22 +221,22 @@ impl TcpRelayFlow {
         TcpRelayTargetToProxyRequest {
             connection_id,
             mut message_framed_write,
+            mut target_read,
             user_token,
             source_address,
             target_address,
-            target_read: mut target_stream_read,
             target_buffer_size,
             message_framed_buffer_size,
         }: TcpRelayTargetToProxyRequest<'a, T>,
     ) -> Result<()>
-    where
-        T: RsaCryptoFetcher + Send + Sync + 'static,
+        where
+            T: RsaCryptoFetcher + Send + Sync + 'static,
     {
         loop {
             let mut target_buffer = BytesMut::with_capacity(target_buffer_size);
             let source_address = source_address.clone();
             let target_address = target_address.clone();
-            match target_stream_read.read_buf(&mut target_buffer).await {
+            match target_read.read_buf(&mut target_buffer).await {
                 Err(e) => {
                     error!(
                         "Connection [{connection_id}] error happen when relay data from target to proxy, target address: {target_address:?}, source address: {source_address:?}, error: {e:#?}"
@@ -241,19 +244,19 @@ impl TcpRelayFlow {
                     message_framed_write.flush().await?;
                     message_framed_write.close().await?;
                     return Err(e.into());
-                },
+                }
                 Ok(0) => {
                     debug!("Connection [{connection_id}] read all data from target, target address: {target_address:?}, source address: {source_address:?}",);
                     message_framed_write.flush().await?;
                     message_framed_write.close().await?;
                     return Ok(());
-                },
+                }
                 Ok(size) => {
                     debug!(
                         "Connection [{connection_id}] read {size} bytes from target to proxy, target address: {target_address:?}, source address: {source_address:?}",
                     );
                     size
-                },
+                }
             };
             let payload_data = target_buffer.split().freeze();
             let payload_data_chunks = payload_data.chunks(message_framed_buffer_size);
@@ -273,7 +276,7 @@ impl TcpRelayFlow {
                     user_token,
                 },
             )
-            .await
+                .await
             {
                 Ok(v) => v,
                 Err(e) => {
@@ -283,9 +286,11 @@ impl TcpRelayFlow {
                     message_framed_write.flush().await?;
                     message_framed_write.close().await?;
                     return Err(e.into());
-                },
+                }
             };
-            WriteMessageFramedResult { message_framed_write, .. } = match MessageFramedWriter::write(WriteMessageFramedRequest {
+            let WriteMessageFramedResult {
+                message_framed_write: message_framed_write_return_back, ..
+            } = match MessageFramedWriter::write(WriteMessageFramedRequest {
                 message_framed_write,
                 ref_id: Some(connection_id),
                 user_token,
@@ -293,7 +298,7 @@ impl TcpRelayFlow {
                 message_payloads: Some(payloads),
                 connection_id: Some(connection_id),
             })
-            .await
+                .await
             {
                 Ok(v) => v,
                 Err(WriteMessageFramedError { source, .. }) => {
@@ -301,8 +306,9 @@ impl TcpRelayFlow {
                         "Connection [{connection_id}] fail to write data from target to proxy, target address: {target_address:?}, source address: {source_address:?}, error: {source:#?}."
                     );
                     return Err(source.into());
-                },
+                }
             };
+            message_framed_write = message_framed_write_return_back;
         }
     }
 }
