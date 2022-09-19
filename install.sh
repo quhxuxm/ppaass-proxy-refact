@@ -45,7 +45,7 @@ sudo git clone https://github.com/quhxuxm/ppaass-proxy.git ppaass-proxy
 sudo chmod 777 ppaass-proxy
 cd /ppaass-proxy/sourcecode/ppaass-proxy
 sudo git pull
-export RUST_BACKTRACE=1
+
 cargo build --release
 
 # ps -ef | grep gradle | grep -v grep | awk '{print $2}' | xargs kill -9
