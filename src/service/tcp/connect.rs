@@ -1,14 +1,13 @@
+use std::net::SocketAddr;
+
 use anyhow::anyhow;
 use anyhow::Result;
-
 use futures::SinkExt;
 use ppaass_common::{
     generate_uuid, MessageFramedRead, MessageFramedWrite, MessageFramedWriter, MessagePayload, NetAddress, PayloadEncryptionTypeSelectRequest,
     PayloadEncryptionTypeSelectResult, PayloadEncryptionTypeSelector, PayloadType, PpaassError, ProxyMessagePayloadTypeValue, RsaCryptoFetcher,
     TcpConnectRequest, TcpConnectResult, TcpConnector, WriteMessageFramedError, WriteMessageFramedRequest, WriteMessageFramedResult,
 };
-
-use std::net::SocketAddr;
 use tokio::net::TcpStream;
 use tracing::{debug, error};
 
@@ -87,7 +86,6 @@ impl TcpConnectFlow {
             agent_address,
             source: anyhow!(e),
         })?;
-
         let connect_addresses = target_address.clone().try_into().map_err(|e: PpaassError| TcpConnectFlowError {
             connection_id: connection_id.to_owned(),
             message_id: message_id.to_owned(),
