@@ -13,6 +13,7 @@ use ppaass_common::{
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpStream;
+use tokio::task::JoinHandle;
 use tracing::{debug, error};
 
 use crate::config::{self, ProxyConfig};
@@ -41,6 +42,8 @@ pub(crate) struct TcpRelayFlowResult<'a> {
     pub user_token: &'a str,
     pub source_address: NetAddress,
     pub target_address: NetAddress,
+    pub proxy_to_target_task: JoinHandle<()>,
+    pub target_to_proxy_task: JoinHandle<()>,
 }
 
 struct TcpRelayProxyToTargetRequest<'a, T>
@@ -87,7 +90,7 @@ impl TcpRelayFlow {
         T: RsaCryptoFetcher + Send + Sync + Debug + 'static,
     {
         let (target_read, target_write) = target_stream.into_split();
-        {
+        let proxy_to_target_task = {
             let connection_id = connection_id.to_owned();
             let source_address = source_address.clone();
             let target_address = target_address.clone();
@@ -104,9 +107,9 @@ impl TcpRelayFlow {
                         "Connection [{connection_id}] error happen when relay data from proxy to target, source address: [{source_address:?}], target address: [{target_address:?}], error: {e:#?}",
                     );
                 }
-            });
-        }
-        {
+            })
+        };
+        let target_to_proxy_task = {
             let target_buffer_size = configuration.target_buffer_size().unwrap_or(config::DEFAULT_BUFFER_SIZE);
             let message_framed_buffer_size = configuration.message_framed_buffer_size().unwrap_or(config::DEFAULT_BUFFER_SIZE);
             let user_token = user_token.to_owned();
@@ -130,14 +133,16 @@ impl TcpRelayFlow {
                         "Connection [{connection_id}] error happen when relay data from target to proxy, source address: [{source_address:?}], target address: [{target_address:?}], error: {e:#?}"
                     );
                 }
-            });
-        }
+            })
+        };
         Ok(TcpRelayFlowResult {
             connection_id,
             source_address,
             target_address,
             agent_address,
             user_token,
+            proxy_to_target_task,
+            target_to_proxy_task,
         })
     }
 

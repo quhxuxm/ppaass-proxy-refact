@@ -2,10 +2,9 @@ use std::{collections::HashMap, net::SocketAddr};
 use std::{fmt::Debug, sync::Arc};
 use std::{fs, path::Path};
 
-use tokio::net::TcpStream;
-
+use anyhow::Result;
 use ppaass_common::{generate_uuid, MessageFramedGenerateResult, MessageFramedGenerator, PpaassError, RsaCrypto, RsaCryptoFetcher};
-
+use tokio::net::TcpStream;
 use tracing::{debug, error};
 
 use crate::{
@@ -18,7 +17,6 @@ use crate::{
 };
 use crate::{config::ProxyConfig, service::init::InitializeFlow};
 
-use anyhow::Result;
 mod init;
 mod tcp;
 mod udp;
@@ -163,6 +161,8 @@ impl AgentConnection {
                     let TcpRelayFlowResult {
                         source_address,
                         target_address,
+                        mut proxy_to_target_task,
+                        mut target_to_proxy_task,
                         ..
                     } = TcpRelayFlow::exec(
                         TcpRelayFlowRequest {
@@ -178,6 +178,12 @@ impl AgentConnection {
                         &configuration,
                     )
                     .await?;
+                    if let Err(e) = tokio::try_join!(&mut proxy_to_target_task, &mut target_to_proxy_task) {
+                        error!("Connection [{connection_id}] error happen when doing tcp relay, agent address: [{agent_address}], source address: [{source_address:?}], target address: [{target_address:?}], error: {e:#?}.");
+                        proxy_to_target_task.abort();
+                        target_to_proxy_task.abort();
+                        break;
+                    }
                     debug!("Connection [{connection_id}] finish tcp relay, agent address: [{agent_address}], source address: [{source_address:?}], target address: [{target_address:?}].");
                     break;
                 },
