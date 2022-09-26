@@ -1,3 +1,4 @@
+use std::net::IpAddr;
 use std::{
     fmt::Debug,
     net::{SocketAddr, ToSocketAddrs},
@@ -6,6 +7,7 @@ use std::{
 
 use anyhow::anyhow;
 use anyhow::Result;
+use dns_lookup;
 use ppaass_common::{
     generate_uuid, AgentMessagePayloadTypeValue, DomainResolveRequest, DomainResolveResponse, MessageFramedRead, MessageFramedReader, MessageFramedWrite,
     MessageFramedWriter, MessagePayload, NetAddress, PayloadEncryptionTypeSelectRequest, PayloadEncryptionTypeSelectResult, PayloadEncryptionTypeSelector,
@@ -13,7 +15,7 @@ use ppaass_common::{
     RsaCryptoFetcher, WriteMessageFramedError, WriteMessageFramedRequest, WriteMessageFramedResult,
 };
 use tokio::net::{TcpStream, UdpSocket};
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use crate::{
     config::{self, ProxyConfig},
@@ -174,13 +176,13 @@ impl InitializeFlow {
                 let target_domain_name = if target_domain_name.ends_with(".") {
                     let result = &target_domain_name[0..target_domain_name.len() - 1];
                     debug!("Resolving domain name(end with .): {result}");
-                    format!("{result}:80")
+                    result.to_string()
                 } else {
                     debug!("Resolving domain name(not end with .): {target_domain_name}");
-                    format!("{target_domain_name}:80")
+                    target_domain_name.to_string()
                 };
                 let (message_framed_write, message_framed_read) = async move {
-                    return match target_domain_name.to_socket_addrs() {
+                    return match dns_lookup::lookup_host(target_domain_name.as_str()) {
                         Err(e) => {
                             error!(
                             "Connection [{connection_id}] fail to resolve domain [{target_domain_name}] because of error, source address: {source_address:?}, target address: {target_address:?}, client address: {agent_address:?}, error: {e:#?}");
@@ -200,13 +202,15 @@ impl InitializeFlow {
                             }).await.map_err(|err| anyhow!(err.source))?;
                             Err(anyhow!( "Connection [{connection_id}] fail to resolve domain [{target_domain_name}]  because of error, source address: {source_address:?}, target address: {target_address:?}, client address: {agent_address:?}, error: {e:#?}"))
                         }
-                        Ok(v) => {
+                        Ok(ip_addresses) => {
                             let mut addresses = Vec::new();
-                            v.for_each(|addr| {
-                                if let SocketAddr::V4(addr) = addr {
-                                    let ip_bytes = addr.ip().octets();
+                            ip_addresses.iter().for_each(|addr| {
+                                if let IpAddr::V4(v4_addr)=addr{
+                                    let ip_bytes = v4_addr.octets();
                                     addresses.push(ip_bytes);
+                                    return;
                                 }
+                                warn!("Connection [{connection_id}] resolve domain [{target_domain_name}]  to IPV6 address: {addr}");
                             });
                             let domain_resolve_response = DomainResolveResponse {
                                 id: domain_resolve_request.id,
