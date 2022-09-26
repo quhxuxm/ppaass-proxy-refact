@@ -6,15 +6,14 @@ use std::{
 
 use anyhow::anyhow;
 use anyhow::Result;
-use tokio::net::{TcpStream, UdpSocket};
-use tracing::{debug, error};
-
 use ppaass_common::{
     generate_uuid, AgentMessagePayloadTypeValue, DomainResolveRequest, DomainResolveResponse, MessageFramedRead, MessageFramedReader, MessageFramedWrite,
     MessageFramedWriter, MessagePayload, NetAddress, PayloadEncryptionTypeSelectRequest, PayloadEncryptionTypeSelectResult, PayloadEncryptionTypeSelector,
     PayloadType, ProxyMessagePayloadTypeValue, ReadMessageFramedError, ReadMessageFramedRequest, ReadMessageFramedResult, ReadMessageFramedResultContent,
     RsaCryptoFetcher, WriteMessageFramedError, WriteMessageFramedRequest, WriteMessageFramedResult,
 };
+use tokio::net::{TcpStream, UdpSocket};
+use tracing::{debug, error};
 
 use crate::{
     config::{self, ProxyConfig},
@@ -184,8 +183,7 @@ impl InitializeFlow {
                     return match target_domain_name.to_socket_addrs() {
                         Err(e) => {
                             error!(
-                            "Connection [{connection_id}] fail to resolve domain  because of error, source address: {source_address:?}, target address: {target_address:?}, client address: {agent_address:?}, error: {e:#?}"
-                        );
+                            "Connection [{connection_id}] fail to resolve domain [{target_domain_name}] because of error, source address: {source_address:?}, target address: {target_address:?}, client address: {agent_address:?}, error: {e:#?}");
                             let domain_resolve_fail = MessagePayload {
                                 source_address: source_address.clone(),
                                 target_address: target_address.clone(),
@@ -199,11 +197,9 @@ impl InitializeFlow {
                                 user_token: user_token.as_str(),
                                 ref_id: Some(message_id.as_str()),
                                 connection_id: Some(connection_id),
-                            })
-                                .await
-                                .map_err(|err| anyhow!(err.source))?;
-                            Err(anyhow!( "Connection [{connection_id}] fail to resolve domain  because of error, source address: {source_address:?}, target address: {target_address:?}, client address: {agent_address:?}, error: {e:#?}"))
-                        },
+                            }).await.map_err(|err| anyhow!(err.source))?;
+                            Err(anyhow!( "Connection [{connection_id}] fail to resolve domain [{target_domain_name}]  because of error, source address: {source_address:?}, target address: {target_address:?}, client address: {agent_address:?}, error: {e:#?}"))
+                        }
                         Ok(v) => {
                             let mut addresses = Vec::new();
                             v.for_each(|addr| {
@@ -231,8 +227,7 @@ impl InitializeFlow {
                                 user_token: user_token.as_str(),
                                 ref_id: Some(message_id.as_str()),
                                 connection_id: Some(connection_id),
-                            })
-                                .await.map_err(|WriteMessageFramedError {
+                            }).await.map_err(|WriteMessageFramedError {
                                 source,
                                 ..
                             }| {
@@ -243,7 +238,7 @@ impl InitializeFlow {
                                 message_framed_write,
                                 message_framed_read
                             ))
-                        },
+                        }
                     };
                 }.await?;
                 return Ok(InitFlowResult::DomainResolve {

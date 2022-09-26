@@ -1,3 +1,4 @@
+edition = "2021"
 fn_args_layout = "Compressed"
 match_arm_leading_pipes = "Preserve"
 match_block_trailing_comma = true
