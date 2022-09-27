@@ -168,15 +168,6 @@ impl InitializeFlow {
                     })
                     .await?;
                 let DomainResolveRequest { id, name } = serde_json::from_slice(data.as_ref())?;
-                // let target_domain_name = domain_resolve_request.name;
-                // let target_domain_name = if target_domain_name.ends_with(".") {
-                //     let result = &target_domain_name[0..target_domain_name.len() - 1];
-                //     debug!("Resolving domain name(end with .): {result}");
-                //     result.to_string()
-                // } else {
-                //     debug!("Resolving domain name(not end with [.]): {target_domain_name}");
-                //     target_domain_name.to_string()
-                // };
                 let (message_framed_write, message_framed_read) = async move {
                     return match dns_lookup::lookup_host(name.as_str()) {
                         Err(e) => {
