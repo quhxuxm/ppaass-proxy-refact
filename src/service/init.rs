@@ -1,9 +1,5 @@
 use std::net::IpAddr;
-use std::{
-    fmt::Debug,
-    net::{SocketAddr, ToSocketAddrs},
-    sync::Arc,
-};
+use std::{fmt::Debug, net::SocketAddr, sync::Arc};
 
 use anyhow::anyhow;
 use anyhow::Result;
