@@ -104,7 +104,7 @@ impl TcpRelayFlow {
                 .await
                 {
                     error!(
-                        "Connection [{connection_id}] error happen when relay data from proxy to target, source address: [{source_address:?}], target address: [{target_address:?}], error: {e:#?}",
+                        "Connection [{connection_id}] error happen when relay data from proxy to target, source address: [{source_address:?}], target address: [{target_address:?}], error: {e:?}",
                     );
                 }
             })
@@ -130,7 +130,7 @@ impl TcpRelayFlow {
                 .await
                 {
                     error!(
-                        "Connection [{connection_id}] error happen when relay data from target to proxy, source address: [{source_address:?}], target address: [{target_address:?}], error: {e:#?}"
+                        "Connection [{connection_id}] error happen when relay data from target to proxy, source address: [{source_address:?}], target address: [{target_address:?}], error: {e:?}"
                     );
                 }
             })
@@ -170,7 +170,7 @@ impl TcpRelayFlow {
                 Err(ReadMessageFramedError { source, .. }) => {
                     let target_peer_addr = target_write.peer_addr();
                     error!(
-                        "Connection [{}] error happen when relay data from proxy to target,  agent address={:?}, target address={:?}, error: {:#?}",
+                        "Connection [{}] error happen when relay data from proxy to target,  agent address={:?}, target address={:?}, error: {:?}",
                         connection_id, agent_address, target_peer_addr, source
                     );
                     target_write.flush().await?;
@@ -244,7 +244,7 @@ impl TcpRelayFlow {
             match target_read.read_buf(&mut target_buffer).await {
                 Err(e) => {
                     error!(
-                        "Connection [{connection_id}] error happen when relay data from target to proxy, target address: {target_address:?}, source address: {source_address:?}, error: {e:#?}"
+                        "Connection [{connection_id}] error happen when relay data from target to proxy, target address: {target_address:?}, source address: {source_address:?}, error: {e:?}"
                     );
                     message_framed_write.flush().await?;
                     message_framed_write.close().await?;
@@ -286,7 +286,7 @@ impl TcpRelayFlow {
                 Ok(v) => v,
                 Err(e) => {
                     error!(
-                            "Connection [{connection_id}] fail to select payload encryption type when transfer data from target to proxy, target address: {target_address:?}, source address={source_address:?}, error: {e:#?}."
+                            "Connection [{connection_id}] fail to select payload encryption type when transfer data from target to proxy, target address: {target_address:?}, source address={source_address:?}, error: {e:?}."
                         );
                     message_framed_write.flush().await?;
                     message_framed_write.close().await?;
@@ -309,7 +309,7 @@ impl TcpRelayFlow {
                 Ok(v) => v,
                 Err(WriteMessageFramedError { source, .. }) => {
                     error!(
-                        "Connection [{connection_id}] fail to write data from target to proxy, target address: {target_address:?}, source address: {source_address:?}, error: {source:#?}."
+                        "Connection [{connection_id}] fail to write data from target to proxy, target address: {target_address:?}, source address: {source_address:?}, error: {source:?}."
                     );
                     return Err(source.into());
                 },

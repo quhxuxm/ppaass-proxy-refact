@@ -92,7 +92,7 @@ impl InitializeFlow {
         })
         .await
         .map_err(|ReadMessageFramedError { source, .. }| {
-            error!("Connection [{connection_id}] handle agent connection fail because of error: {source}.");
+            error!("Connection [{connection_id}] handle agent connection fail because of error: {source:?}.");
             anyhow!(source)
         })? {
             ReadMessageFramedResult {
@@ -133,7 +133,7 @@ impl InitializeFlow {
                     connection_id: Some(connection_id),
                 })
                     .await.map_err(|WriteMessageFramedError { source, .. }| {
-                    error!("Connection [{}] fail to write heartbeat success to agent because of error, source address: {:?}, target address: {:?}, client address: {:?}", connection_id, source_address, target_address, agent_address);
+                    error!("Connection [{connection_id}] fail to write heartbeat success to agent because of error, source address: {source_address:?}, target address: {target_address:?}, client address: {agent_address:?}, error:{source:?}");
                     return anyhow!(source);
                 })?;
                 return Ok(InitFlowResult::Heartbeat {
@@ -167,21 +167,21 @@ impl InitializeFlow {
                         user_token: user_token.as_str(),
                     })
                     .await?;
-                let domain_resolve_request: DomainResolveRequest = serde_json::from_slice(data.as_ref())?;
-                let target_domain_name = domain_resolve_request.name.as_str();
-                let target_domain_name = if target_domain_name.ends_with(".") {
-                    let result = &target_domain_name[0..target_domain_name.len() - 1];
-                    debug!("Resolving domain name(end with .): {result}");
-                    result.to_string()
-                } else {
-                    debug!("Resolving domain name(not end with .): {target_domain_name}");
-                    target_domain_name.to_string()
-                };
+                let DomainResolveRequest { id, name } = serde_json::from_slice(data.as_ref())?;
+                // let target_domain_name = domain_resolve_request.name;
+                // let target_domain_name = if target_domain_name.ends_with(".") {
+                //     let result = &target_domain_name[0..target_domain_name.len() - 1];
+                //     debug!("Resolving domain name(end with .): {result}");
+                //     result.to_string()
+                // } else {
+                //     debug!("Resolving domain name(not end with [.]): {target_domain_name}");
+                //     target_domain_name.to_string()
+                // };
                 let (message_framed_write, message_framed_read) = async move {
-                    return match dns_lookup::lookup_host(target_domain_name.as_str()) {
+                    return match dns_lookup::lookup_host(name.as_str()) {
                         Err(e) => {
                             error!(
-                            "Connection [{connection_id}] fail to resolve domain [{target_domain_name}] because of error, source address: {source_address:?}, target address: {target_address:?}, client address: {agent_address:?}, error: {e:#?}");
+                            "Connection [{connection_id}] fail to resolve domain [{name}] because of error, source address: {source_address:?}, target address: {target_address:?}, client address: {agent_address:?}, error: {e:?}");
                             let domain_resolve_fail = MessagePayload {
                                 source_address: source_address.clone(),
                                 target_address: target_address.clone(),
@@ -196,7 +196,7 @@ impl InitializeFlow {
                                 ref_id: Some(message_id.as_str()),
                                 connection_id: Some(connection_id),
                             }).await.map_err(|err| anyhow!(err.source))?;
-                            Err(anyhow!( "Connection [{connection_id}] fail to resolve domain [{target_domain_name}]  because of error, source address: {source_address:?}, target address: {target_address:?}, client address: {agent_address:?}, error: {e:#?}"))
+                            Err(anyhow!( "Connection [{connection_id}] fail to resolve domain [{name}]  because of error, source address: {source_address:?}, target address: {target_address:?}, client address: {agent_address:?}, error: {e:#?}"))
                         }
                         Ok(ip_addresses) => {
                             let mut addresses = Vec::new();
@@ -206,11 +206,11 @@ impl InitializeFlow {
                                     addresses.push(ip_bytes);
                                     return;
                                 }
-                                warn!("Connection [{connection_id}] resolve domain [{target_domain_name}]  to IPV6 address: {addr}");
+                                warn!("Connection [{connection_id}] resolve domain [{name}]  to IPV6 address: {addr}");
                             });
                             let domain_resolve_response = DomainResolveResponse {
-                                id: domain_resolve_request.id,
-                                name: domain_resolve_request.name,
+                                id,
+                                name,
                                 addresses,
                             };
                             let domain_resolve_response_bytes = serde_json::to_vec(&domain_resolve_response)?;
@@ -231,7 +231,7 @@ impl InitializeFlow {
                                 source,
                                 ..
                             }| {
-                                error!("Connection [{}] fail to write domain resolve success to agent because of error, source address: {:?}, target address: {:?}, client address: {:?}", connection_id, source_address, target_address, agent_address);
+                                error!("Connection [{connection_id}] fail to write domain resolve success to agent because of error, source address: {source_address:?}, target address: {target_address:?}, client address: {agent_address:?}, error:{source:?}");
                                 anyhow!(source)
                             })?;
                             Ok((

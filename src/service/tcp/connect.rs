@@ -156,7 +156,7 @@ impl TcpConnectFlow {
             },
         };
         debug!(
-            "Connection [{}] agent address: {}, success connect to target {:#?}",
+            "Connection [{}] agent address: {}, success connect to target {:?}",
             connection_id, agent_address, target_address
         );
 
@@ -176,7 +176,7 @@ impl TcpConnectFlow {
         })
         .await
         .map_err(|WriteMessageFramedError { source, .. }| {
-            error!("Connection [{connection_id}] fail to write connect success result to agent because of error: {source:#?}");
+            error!("Connection [{connection_id}] fail to write connect success result to agent because of error: {source:?}");
             TcpConnectFlowError {
                 connection_id: connection_id.to_owned(),
                 message_id: message_id.to_owned(),

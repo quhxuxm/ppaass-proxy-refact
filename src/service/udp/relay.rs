@@ -76,7 +76,7 @@ impl UdpRelayFlow {
                     .await
                     {
                         Err(ReadMessageFramedError { source, .. }) => {
-                            error!("Udp relay has a error when read from agent, connection id: [{connection_id}] , error: {source:#?}.");
+                            error!("Udp relay has a error when read from agent, connection id: [{connection_id}] , error: {source:?}.");
                             return;
                         },
                         Ok(ReadMessageFramedResult { content: None, .. }) => {
@@ -100,13 +100,13 @@ impl UdpRelayFlow {
                             let udp_target_addresses = match target_address.clone().to_socket_addrs() {
                                 Ok(v) => v,
                                 Err(e) => {
-                                    error!("Udp relay fail to convert target address, connection id: [{connection_id}], error : {e:#?}");
+                                    error!("Udp relay fail to convert target address, connection id: [{connection_id}], error: {e:?}");
                                     return;
                                 },
                             };
 
                             if let Err(e) = udp_binding_socket.connect(udp_target_addresses.collect::<Vec<_>>().as_slice()).await {
-                                error!("Udp relay fail connect to target, target: [{target_address:?}], connection id: [{connection_id}], error: {e:#?}");
+                                error!("Udp relay fail connect to target, target: [{target_address:?}], connection id: [{connection_id}], error:{e:?}");
                                 return;
                             };
                             info!(
@@ -115,7 +115,7 @@ impl UdpRelayFlow {
                             );
                             if let Err(e) = udp_binding_socket.send(&data).await {
                                 error!(
-                                    "Udp relay fail to send udp packet to target, connection id:[{connection_id}], target: [{target_address:?}], error: {e:#?}"
+                                    "Udp relay fail to send udp packet to target, connection id:[{connection_id}], target: [{target_address:?}], error:{e:?}"
                                 );
                                 return;
                             };
@@ -136,7 +136,7 @@ impl UdpRelayFlow {
                                         return;
                                     },
                                     Ok(Err(e)) => {
-                                        error!("Udp relay fail to receive udp packet from target, connection id: [{connection_id}], target: [{target_address:?}], error:{e:#?}");
+                                        error!("Udp relay fail to receive udp packet from target, connection id: [{connection_id}], target: [{target_address:?}], error:{e:?}");
                                         drop(udp_response_sender);
                                         return;
                                     },
@@ -155,7 +155,7 @@ impl UdpRelayFlow {
                                 };
 
                                 if let Err(e) = udp_response_sender.send(message_payload).await {
-                                    error!("Fail to receive udp data because of error: {:?}", e)
+                                    error!("Fail to receive udp data because of error: {e:?}")
                                 };
                                 drop(udp_response_sender);
                             });
@@ -188,13 +188,12 @@ impl UdpRelayFlow {
                     {
                         Err(e) => {
                             error!(
-                            "Udp relay fail to select payload encryption, connection id: [{connection_id}], target address: [{target_address:?}], error:{e:#?}"
+                            "Udp relay fail to select payload encryption, connection id: [{connection_id}], target address: [{target_address:?}], error:{e:?}"
                         );
                             continue;
                         },
                         Ok(v) => v,
                     };
-
                     message_framed_write = match MessageFramedWriter::write(WriteMessageFramedRequest {
                         connection_id: Some(connection_id.as_str()),
                         message_framed_write,
@@ -207,7 +206,7 @@ impl UdpRelayFlow {
                     {
                         Err(WriteMessageFramedError { message_framed_write, source }) => {
                             error!(
-                            "Udp relay fail to write data to target, connection id: [{connection_id}], target address: [{target_address:?}], error:{source:#?}"
+                            "Udp relay fail to write data to target, connection id: [{connection_id}], target address: [{target_address:?}], error:{source:?}"
                         );
                             message_framed_write
                         },

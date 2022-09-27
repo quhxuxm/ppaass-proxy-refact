@@ -99,7 +99,7 @@ impl UdpAssociateFlow {
         };
         let udp_binded_socket = match UdpSocket::bind(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0))).await {
             Err(e) => {
-                error!("Udp associate fail because of bind udp socket, connection id: [{connection_id}], error : {e:#?}");
+                error!("Udp associate fail because of bind udp socket, connection id: [{connection_id}], error: {e:?}");
                 return Err(UdpAssociateFlowError {
                     connection_id: connection_id.to_owned(),
                     message_id: message_id.to_owned(),
@@ -132,7 +132,7 @@ impl UdpAssociateFlow {
             Err(WriteMessageFramedError {
                 source, message_framed_write, ..
             }) => {
-                error!("Udp associate, fail to write udp associate success response to connection [{connection_id}], source address: [{source_address:?}], error:\n {source:#?}\n");
+                error!("Udp associate, fail to write udp associate success response to connection [{connection_id}], source address: [{source_address:?}], error: {source:?}");
                 return Err(UdpAssociateFlowError {
                     connection_id: connection_id.to_owned(),
                     message_id: message_id.to_owned(),
