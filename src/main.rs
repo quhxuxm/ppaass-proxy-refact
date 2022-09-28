@@ -17,6 +17,7 @@ use server::ProxyServerSignal;
 use crate::server::ProxyServer;
 
 pub(crate) mod config;
+mod connection;
 pub(crate) mod server;
 pub(crate) mod service;
 
