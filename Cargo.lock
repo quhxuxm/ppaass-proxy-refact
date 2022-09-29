@@ -898,6 +898,7 @@ dependencies = [
  "dns-lookup",
  "futures",
  "hotwatch",
+ "pin-project",
  "ppaass-common",
  "pretty-hex",
  "rand",
