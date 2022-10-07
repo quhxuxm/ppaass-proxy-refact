@@ -5,15 +5,15 @@ version = "0.1.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [profile.release]
-codegen-units = 16
-debug = false
-debug-assertions = false
-incremental = false
-lto = false
-opt-level = 3
-overflow-checks = false
-panic = 'unwind'
-rpath = false
+codegen-units = 16 
+debug = false 
+debug-assertions = false 
+incremental = false 
+lto = false 
+opt-level = 3 
+overflow-checks = false 
+panic = 'unwind' 
+rpath = false 
 split-debuginfo = '...' # Platform-specific.
 
 [[bin]]
@@ -24,21 +24,22 @@ path = "src/main.rs"
 anyhow = "*"
 bytes = "*"
 chrono = "*"
-clap = { version = "*", features = ["derive"] }
+clap = {version = "*", features = ["derive"]}
+dns-lookup = "*"
 futures = "*"
 hotwatch = "*"
-ppaass-common = { git = "https://github.com/quhxuxm/ppaass-common" }
+pin-project = "*"
+ppaass-common = {git = "https://github.com/quhxuxm/ppaass-common"}
 pretty-hex = "*"
 rand = "*"
 serde = "*"
 serde_derive = "*"
 serde_json = "*"
 socket2 = "*"
-tokio = { version = "*", features = ["macros", "time", "net", "io-util", "rt-multi-thread"] }
-tokio-util = { version = "*", features = ["codec"] }
+tokio = {version = "*", features = ["macros", "time", "net", "io-util", "rt-multi-thread"]}
+tokio-util = {version = "*", features = ["codec"]}
 toml = "*"
+tower = {version = "*", features = ["util"]}
 tracing = "*"
 tracing-appender = "*"
 tracing-subscriber = "*"
-dns-lookup = "*"
-pin-project = "*"

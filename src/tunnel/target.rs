@@ -1,37 +1,38 @@
-use std::pin::Pin;
 use std::task::{Context, Poll};
+use std::{net::ToSocketAddrs, pin::Pin};
 
-use futures::AsyncRead;
 use pin_project::pin_project;
 use tokio::io::AsyncRead;
-use tokio::net::ToSocketAddrs;
 
 use crate::tunnel::AsyncReadAndWrite;
 
 #[pin_project]
-pub(crate) struct TargetConnection<A>
+pub(crate) struct TargetConnection<T, A>
 where
+    T: AsyncReadAndWrite,
     A: ToSocketAddrs,
 {
     #[pin]
-    concrete_rw: Box<dyn AsyncReadAndWrite>,
+    concrete_rw: T,
     addresses: A,
 }
 
-impl<A> TargetConnection<A>
+impl<T, A> TargetConnection<T, A>
 where
+    T: AsyncReadAndWrite,
     A: ToSocketAddrs,
 {
-    pub(crate) fn new(concrete_rw: Box<dyn AsyncReadAndWrite>, addresses: A) -> Self {
+    pub(crate) fn new(concrete_rw: T, addresses: A) -> Self {
         Self { concrete_rw, addresses }
     }
 }
 
-impl<A> AsyncRead for TargetConnection<A>
+impl<T, A> AsyncRead for TargetConnection<T, A>
 where
+    T: AsyncReadAndWrite,
     A: ToSocketAddrs,
 {
-    fn poll_read(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut [u8]) -> Poll<std::io::Result<usize>> {
+    fn poll_read(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut tokio::io::ReadBuf<'_>) -> Poll<std::io::Result<()>> {
         let this = self.project();
         this.concrete_rw.poll_read(cx, buf)
     }

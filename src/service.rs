@@ -17,6 +17,7 @@ use crate::{
 };
 use crate::{config::ProxyConfig, service::init::InitializeFlow};
 
+mod dispatcher;
 mod init;
 mod tcp;
 mod udp;
