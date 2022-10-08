@@ -20,7 +20,7 @@ use crate::{
 
 use super::{
     tcp::connect::{TcpConnectFlow, TcpConnectFlowRequest, TcpConnectFlowResult},
-    udp::associate::{UdpAssociateFlow, UdpAssociateFlowRequest, UdpAssociateFlowResult},
+    udp::associate::{UdpAssociateFlow, UdpAssociateFlowRequest, UdpAssociateFlowResult}, AgentConnection,
 };
 
 #[derive(Debug)]
@@ -70,14 +70,8 @@ where
 pub(crate) struct InitializeFlow;
 
 impl InitializeFlow {
-    pub async fn exec<T>(
-        InitFlowRequest {
-            connection_id,
-            message_framed_read,
-            message_framed_write,
-            agent_address,
-        }: InitFlowRequest<'_, T, TcpStream>,
-        configuration: &ProxyConfig,
+    pub async fn exec<T, A, F>(
+        agent_connection: AgentConnection<T, A, F>
     ) -> Result<InitFlowResult<T>>
     where
         T: RsaCryptoFetcher + Send + Sync + Debug + 'static,

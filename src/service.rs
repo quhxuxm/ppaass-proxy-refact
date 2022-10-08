@@ -1,23 +1,24 @@
-use std::{collections::HashMap, net::SocketAddr};
+use std::{
+    collections::HashMap,
+    pin::Pin,
+    task::{Context, Poll},
+};
 use std::{fmt::Debug, sync::Arc};
 use std::{fs, path::Path};
 
 use anyhow::Result;
-use ppaass_common::{generate_uuid, MessageFramedGenerateResult, MessageFramedGenerator, PpaassError, RsaCrypto, RsaCryptoFetcher};
-use tokio::net::TcpStream;
-use tracing::{debug, error};
-
-use crate::{
-    config,
-    service::{
-        init::{InitFlowRequest, InitFlowResult},
-        tcp::relay::{TcpRelayFlow, TcpRelayFlowRequest, TcpRelayFlowResult},
-        udp::relay::{UdpRelayFlow, UdpRelayFlowRequest, UdpRelayFlowResult},
-    },
+use futures::{Sink, Stream};
+use pin_project::pin_project;
+use ppaass_common::{generate_uuid, Message, MessageCodec, PpaassError, RsaCrypto, RsaCryptoFetcher};
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    net::ToSocketAddrs,
 };
-use crate::{config::ProxyConfig, service::init::InitializeFlow};
+use tokio_util::codec::Framed;
+use tracing::error;
 
-mod dispatcher;
+use crate::config::ProxyConfig;
+
 mod init;
 mod tcp;
 mod udp;
@@ -85,139 +86,79 @@ impl RsaCryptoFetcher for ProxyRsaCryptoFetcher {
     }
 }
 
+pub(crate) trait AsyncReadAndWrite: AsyncRead + AsyncWrite + Unpin {}
+
+impl<T> AsyncReadAndWrite for T where T: AsyncRead + AsyncWrite + Unpin {}
+
+#[pin_project]
 #[derive(Debug)]
-pub(crate) struct AgentConnection {
+pub(crate) struct AgentConnection<T, A, F>
+where
+    T: AsyncReadAndWrite,
+    A: ToSocketAddrs,
+    F: RsaCryptoFetcher,
+{
     id: String,
-    agent_stream: TcpStream,
-    agent_address: SocketAddr,
+    #[pin]
+    message_framed: Framed<T, MessageCodec<F>>,
+    addresses: A,
 }
 
-impl AgentConnection {
-    pub fn new(agent_stream: TcpStream, agent_address: SocketAddr) -> Self {
-        Self {
-            id: generate_uuid(),
-            agent_stream,
-            agent_address,
-        }
-    }
-    pub fn get_id(&self) -> &str {
-        self.id.as_str()
+impl<T, A, F> AgentConnection<T, A, F>
+where
+    T: AsyncReadAndWrite,
+    A: ToSocketAddrs,
+    F: RsaCryptoFetcher,
+{
+    pub(crate) fn new(concrete_read_write: T, addresses: A, rsa_crypto_fetcher: Arc<F>, compress: bool, buffer_size: usize) -> Self {
+        let message_framed = Framed::with_capacity(concrete_read_write, MessageCodec::<F>::new(compress, rsa_crypto_fetcher), buffer_size);
+        let id = generate_uuid();
+        Self { message_framed, addresses, id }
     }
 
-    pub async fn exec<T>(self, rsa_crypto_fetcher: Arc<T>, configuration: Arc<ProxyConfig>) -> Result<()>
-    where
-        T: RsaCryptoFetcher + Send + Sync + Debug + 'static,
-    {
-        let connection_id = self.id.clone();
-        debug!("Begin to handle agent connection: {}", connection_id);
-        let message_framed_buffer_size = configuration.message_framed_buffer_size().unwrap_or(config::DEFAULT_BUFFER_SIZE);
-        let compress = configuration.compress().unwrap_or(config::DEFAULT_COMPRESS_ENABLE);
-        let agent_stream = self.agent_stream;
-        let agent_address = self.agent_address;
-        let MessageFramedGenerateResult {
-            mut message_framed_write,
-            mut message_framed_read,
-        } = MessageFramedGenerator::generate(agent_stream, message_framed_buffer_size, compress, rsa_crypto_fetcher).await;
-        debug!("Connection [{}] is going to handle tcp connect.", connection_id);
-        loop {
-            match InitializeFlow::exec(
-                InitFlowRequest {
-                    connection_id: connection_id.as_str(),
-                    message_framed_read,
-                    message_framed_write,
-                    agent_address,
-                },
-                &configuration,
-            )
-            .await?
-            {
-                InitFlowResult::Heartbeat {
-                    message_framed_read: _message_framed_read,
-                    message_framed_write: _message_framed_write,
-                } => {
-                    debug!("Connection [{connection_id}] heartbeat complete, agent address: [{agent_address}].");
-                    message_framed_read = _message_framed_read;
-                    message_framed_write = _message_framed_write;
-                    continue;
-                },
-                InitFlowResult::DomainResolve {
-                    message_framed_read: _message_framed_read,
-                    message_framed_write: _message_framed_write,
-                } => {
-                    debug!("Connection [{connection_id}] domain resolve complete, agent address: [{agent_address}].");
-                    message_framed_read = _message_framed_read;
-                    message_framed_write = _message_framed_write;
-                    continue;
-                },
-                InitFlowResult::Tcp {
-                    target_stream,
-                    message_framed_read,
-                    message_framed_write,
-                    source_address,
-                    target_address,
-                    user_token,
-                    ..
-                } => {
-                    debug!("Connection [{connection_id}] going to do tcp relay, agent address: [{agent_address}], source address: [{source_address:?}], target address: [{target_address:?}].");
-                    let TcpRelayFlowResult {
-                        source_address,
-                        target_address,
-                        mut proxy_to_target_task,
-                        mut target_to_proxy_task,
-                        ..
-                    } = TcpRelayFlow::exec(
-                        TcpRelayFlowRequest {
-                            connection_id: &connection_id,
-                            message_framed_read,
-                            message_framed_write,
-                            agent_address,
-                            target_stream,
-                            source_address,
-                            target_address,
-                            user_token: &user_token,
-                        },
-                        &configuration,
-                    )
-                    .await?;
-                    if let Err(e) = tokio::try_join!(&mut proxy_to_target_task, &mut target_to_proxy_task) {
-                        error!("Connection [{connection_id}] error happen when doing tcp relay, agent address: [{agent_address}], source address: [{source_address:?}], target address: [{target_address:?}], error: {e:#?}.");
-                        proxy_to_target_task.abort();
-                        target_to_proxy_task.abort();
-                        break;
-                    }
-                    debug!("Connection [{connection_id}] finish tcp relay, agent address: [{agent_address}], source address: [{source_address:?}], target address: [{target_address:?}].");
-                    break;
-                },
-                InitFlowResult::Udp {
-                    message_framed_read,
-                    message_framed_write,
-                    message_id,
-                    user_token,
-                    udp_binding_socket,
-                    ..
-                } => {
-                    debug!("Connection [{}] is going to handle udp relay.", connection_id);
-                    let UdpRelayFlowResult {
-                        connection_id,
-                        message_id,
-                        user_token,
-                    } = UdpRelayFlow::exec(
-                        UdpRelayFlowRequest {
-                            connection_id: connection_id.as_str(),
-                            message_framed_read,
-                            message_framed_write,
-                            message_id: message_id.as_str(),
-                            user_token: user_token.as_str(),
-                            udp_binding_socket,
-                        },
-                        &configuration,
-                    )
-                    .await?;
-                    debug!("Connection [{connection_id}] finish udp relay, associate message id: [{message_id}], user token: [{user_token}].");
-                    break;
-                },
-            }
-        }
-        Ok(())
+    pub(crate) fn get_id(&self) -> &str {
+        self.id.as_str()
+    }
+}
+
+impl<T, A, F> Stream for AgentConnection<T, A, F>
+where
+    T: AsyncReadAndWrite,
+    A: ToSocketAddrs,
+    F: RsaCryptoFetcher,
+{
+    type Item = Result<Message, PpaassError>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let this = self.project();
+        this.message_framed.poll_next(cx)
+    }
+}
+impl<T, A, F> Sink<Message> for AgentConnection<T, A, F>
+where
+    T: AsyncReadAndWrite,
+    A: ToSocketAddrs,
+    F: RsaCryptoFetcher,
+{
+    type Error = PpaassError;
+
+    fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        let this = self.project();
+        this.message_framed.poll_ready(cx)
+    }
+
+    fn start_send(self: Pin<&mut Self>, item: Message) -> Result<(), Self::Error> {
+        let this = self.project();
+        this.message_framed.start_send(item)
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        let this = self.project();
+        this.message_framed.poll_flush(cx)
+    }
+
+    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        let this = self.project();
+        this.message_framed.poll_close(cx)
     }
 }

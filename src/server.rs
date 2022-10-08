@@ -137,10 +137,10 @@ impl ProxyServer {
                         };
 
                         let proxy_rsa_crypto_fetcher = Arc::clone(&proxy_rsa_crypto_fetcher);
-                        let configuration = configuration.clone();
+                        let compress = configuration.compress().unwrap_or(false);
                         tokio::spawn(async move {
-                            let agent_connection = AgentConnection::new(agent_stream, agent_address);
-                            let agent_connection_id = agent_connection.get_id().to_owned();
+                            let agent_connection = AgentConnection::new(agent_stream, agent_address, proxy_rsa_crypto_fetcher, compress, 1024 * 64);
+                            let agent_connection_id = agent_connection.get_id();
                             if let Err(e) = agent_connection.exec(proxy_rsa_crypto_fetcher, configuration).await {
                                 error!(
                                     "Error happen when handle agent connection: [{}], agent address:[{}], error:{:#?}",

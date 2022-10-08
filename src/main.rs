@@ -19,7 +19,6 @@ use crate::server::ProxyServer;
 pub(crate) mod config;
 pub(crate) mod server;
 pub(crate) mod service;
-mod tunnel;
 
 fn merge_arguments_and_log_config(arguments: &ProxyArguments, log_config: &mut ProxyLogConfig) {
     if let Some(ref log_dir) = arguments.log_dir {
