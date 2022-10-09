@@ -1,176 +1,87 @@
-use std::thread::JoinHandle as StdJoinHandler;
-use std::{net::SocketAddrV6, time::Duration};
-use std::{
-    net::{Ipv4Addr, SocketAddrV4},
-    sync::Arc,
-};
-use std::{
-    net::{Ipv6Addr, SocketAddr},
-    sync::mpsc::Receiver,
-};
-
-use anyhow::anyhow;
 use anyhow::Result;
-use tokio::{net::TcpSocket, runtime::Builder as TokioRuntimeBuilder};
-use tracing::{debug, error, info};
-
-use crate::{
-    config::{self, ProxyConfig},
-    service::{AgentConnection, ProxyRsaCryptoFetcher},
+use futures::Future;
+use pin_project::pin_project;
+use std::{
+    pin::Pin,
+    task::{Context, Poll},
+    thread::JoinHandle,
 };
+use tokio::{
+    net::TcpListener,
+    runtime::{Builder, Runtime},
+    sync::mpsc::{Receiver, Sender},
+};
+use tracing::{error, info};
 
 #[derive(Debug)]
-pub(crate) enum ProxyServerSignal {
-    Startup { configuration: ProxyConfig },
-    Shutdown,
+pub(super) enum ProxyCommand {
+    Stop,
 }
-#[derive(Debug)]
-pub(crate) struct ProxyServer {
-    signal_receiver: Receiver<ProxyServerSignal>,
+
+#[pin_project]
+pub(super) struct ProxyServer {
+    runtime: Runtime,
+    bind_port: u16,
+    use_ipv6: bool,
+    command_receiver: Receiver<ProxyCommand>,
+    command_sender: Sender<ProxyCommand>,
+    manager: Option<JoinHandle<()>>,
 }
 
 impl ProxyServer {
-    pub(crate) fn new(signal_receiver: Receiver<ProxyServerSignal>) -> Result<Self> {
-        Ok(Self { signal_receiver })
+    pub(super) fn new(bind_port: u16, use_ipv6: bool) -> Result<Self> {
+        let mut runtime_builder = Builder::new_multi_thread();
+        runtime_builder.enable_all().worker_threads(256);
+        let runtime = runtime_builder.build()?;
+        let (command_sender, command_receiver) = tokio::sync::mpsc::channel(1024);
+        Ok(Self {
+            runtime,
+            bind_port,
+            use_ipv6,
+            command_receiver,
+            command_sender,
+            manager: None,
+        })
     }
 
-    pub(crate) fn run(self) -> Result<StdJoinHandler<()>> {
-        let signal = self.signal_receiver.recv().map_err(|e| {
-            error!("Proxy server going to shutdown because of error: {e:#?}.");
-            anyhow!(e)
-        })?;
-        match signal {
-            ProxyServerSignal::Shutdown => {
-                info!("Proxy server going to shutdown.");
-                return Err(anyhow!("Proxy server going to shutdown."));
-            },
-            ProxyServerSignal::Startup { configuration } => {
-                info!("Proxy server going to startup.");
-                let configuration = Arc::new(configuration);
-                let mut runtime_builder = TokioRuntimeBuilder::new_multi_thread();
-                runtime_builder
-                    .enable_all()
-                    .max_blocking_threads(configuration.max_blocking_threads().unwrap_or(32))
-                    .worker_threads(configuration.thread_number().unwrap_or(1024));
-                let runtime = runtime_builder.build()?;
-                let proxy_rsa_crypto_fetcher = ProxyRsaCryptoFetcher::new(&configuration).map_err(|e| {
-                    error!("Fail to start up proxy server because of error: {:#?}", e);
-                    anyhow!(e)
-                })?;
-                let proxy_rsa_crypto_fetcher = Arc::new(proxy_rsa_crypto_fetcher);
-                runtime.spawn(async move {
-                    let server_socket = match configuration.ipv6() {
-                        None | Some(false) => match TcpSocket::new_v4() {
-                            Err(e) => {
-                                error!("Fail to initialize server tcp socket because of error: {e:#?}");
-                                return;
-                            },
-                            Ok(v) => v,
-                        },
-                        Some(true) => match TcpSocket::new_v6() {
-                            Err(e) => {
-                                error!("Fail to initialize server tcp socket because of error: {e:#?}");
-                                return;
-                            },
-                            Ok(v) => v,
-                        },
-                    };
-                    if let Err(e) = server_socket.set_reuseaddr(true) {
-                        error!("Fail to initialize server tcp socket reuse addr because of error: {e:#?}");
-                        return;
-                    };
-                    if let Some(so_recv_buffer_size) = configuration.so_recv_buffer_size() {
-                        if let Err(e) = server_socket.set_recv_buffer_size(so_recv_buffer_size) {
-                            error!("Fail to initialize server tcp socket recv_buffer_size because of error: {e:#?}");
-                            return;
-                        };
-                    }
-                    if let Some(so_send_buffer_size) = configuration.so_send_buffer_size() {
-                        if let Err(e) = server_socket.set_send_buffer_size(so_send_buffer_size) {
-                            error!("Fail to initialize server tcp socket send_buffer_size because of error: {e:#?}");
-                            return;
-                        }
-                    }
-                    let local_socket_address = match configuration.ipv6() {
-                        None | Some(false) => SocketAddr::V4(SocketAddrV4::new(
-                            Ipv4Addr::new(0, 0, 0, 0),
-                            configuration.port().unwrap_or(config::DEFAULT_SERVER_PORT),
-                        )),
-                        Some(true) => SocketAddr::V6(SocketAddrV6::new(
-                            Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0),
-                            configuration.port().unwrap_or(config::DEFAULT_SERVER_PORT),
-                            0,
-                            0,
-                        )),
-                    };
-                    if let Err(e) = server_socket.bind(local_socket_address) {
-                        error!("Fail to bind server tcp socket on address {local_socket_address} because of error: {:#?}", e);
-                        panic!("Fail to bind server tcp socket on address {local_socket_address} because of error: {e:#?}");
-                    }
-                    let listener = match server_socket.listen(configuration.so_backlog().unwrap_or(1024)) {
-                        Err(e) => {
-                            error!("Fail to make tcp server tcp socket listen because of error: {:#?}", e);
-                            return;
-                        },
-                        Ok(v) => v,
-                    };
-                    let listening_port = local_socket_address.port();
-                    println!("ppaass-proxy is listening port: {listening_port} ");
-                    info!("ppaass-proxy is listening port: {listening_port} ");
-                    loop {
-                        let (agent_stream, agent_address) = match listener.accept().await {
-                            Err(e) => {
-                                error!("Fail to accept agent connection because of error: {e:#?}");
-                                continue;
-                            },
-                            Ok(v) => v,
-                        };
-                        if let Err(e) = agent_stream.set_nodelay(true) {
-                            error!("Fail to set agent connection no delay because of error: {:#?}", e);
-                            continue;
-                        }
-                        if let Some(agent_stream_so_linger) = configuration.agent_stream_so_linger() {
-                            if let Err(e) = agent_stream.set_linger(Some(Duration::from_secs(agent_stream_so_linger))) {
-                                error!("Fail to set agent connection linger because of error: {:#?}", e);
-                                continue;
-                            }
-                        };
+    pub(super) fn send_command(self: Pin<&'static mut Self>, command: ProxyCommand) {
+        let this = self.project();
+        this.runtime.spawn(async {
+            if let Err(e) = this.command_sender.send(command).await {
+                error!("Fail to send proxy command because of error: {e:?}");
+            }
+        });
+    }
 
-                        let proxy_rsa_crypto_fetcher = Arc::clone(&proxy_rsa_crypto_fetcher);
-                        let compress = configuration.compress().unwrap_or(false);
-                        tokio::spawn(async move {
-                            let agent_connection = AgentConnection::new(agent_stream, agent_address, proxy_rsa_crypto_fetcher, compress, 1024 * 64);
-                            let agent_connection_id = agent_connection.get_id();
-                            if let Err(e) = agent_connection.exec(proxy_rsa_crypto_fetcher, configuration).await {
-                                error!(
-                                    "Error happen when handle agent connection: [{}], agent address:[{}], error:{:#?}",
-                                    agent_connection_id, agent_address, e
-                                );
-                                return;
-                            }
-                            debug!("Agent connection [{agent_connection_id}] complete exec successfully.");
-                        });
-                    }
-                });
-                let guard = std::thread::spawn(move || loop {
-                    match self.signal_receiver.recv() {
-                        Ok(ProxyServerSignal::Shutdown) => {
-                            info!("Proxy server going to shutdown.");
-                            runtime.shutdown_timeout(Duration::from_secs(60));
-                            return;
+    pub(super) fn run(self: Pin<&'static mut Self>) -> Result<()> {
+        let this = self.project();
+        this.runtime.spawn(async {
+            loop {
+                match this.command_receiver.recv().await {
+                    None => {
+                        return;
+                    },
+                    Some(command) => match command {
+                        ProxyCommand::Stop => {
+                            this.runtime.
+                            
                         },
-                        Ok(other_signal) => {
-                            info!("Ignore other single when proxy server is running: {:?}", other_signal);
-                        },
-                        Err(e) => {
-                            error!("Fail to receive proxy server signal because of error: {:#?}", e);
-                            runtime.shutdown_timeout(Duration::from_secs(60));
-                            return;
-                        },
-                    }
-                });
-                Ok(guard)
-            },
-        }
+                    },
+                }
+            }
+        });
+        this.runtime.block_on(async {
+            let binding_addr = if *this.use_ipv6 {
+                format!("::1:{}", this.bind_port)
+            } else {
+                format!("0.0.0.0:{}", this.bind_port)
+            };
+            let tcp_listener = TcpListener::bind(binding_addr.clone()).await?;
+            info!("Proxy server started, bind on address: {binding_addr}");
+            loop {
+                let (agent_tcp_stream, agent_tcp_socket_address) = tcp_listener.accept().await?;
+            }
+            Ok(())
+        })
     }
 }
