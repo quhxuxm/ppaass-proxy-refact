@@ -3,85 +3,120 @@ use futures::Future;
 use pin_project::pin_project;
 use std::{
     pin::Pin,
+    sync::mpsc::{channel, Receiver, SendError, Sender},
     task::{Context, Poll},
-    thread::JoinHandle,
+    thread::{self, JoinHandle},
+    time::Duration,
 };
 use tokio::{
     net::TcpListener,
     runtime::{Builder, Runtime},
-    sync::mpsc::{Receiver, Sender},
 };
 use tracing::{error, info};
 
 #[derive(Debug)]
-pub(super) enum ProxyCommand {
-    Stop,
+pub(crate) enum Command {
+    StartServer,
+    StopServer,
 }
 
-#[pin_project]
-pub(super) struct ProxyServer {
-    runtime: Runtime,
+#[derive(Debug)]
+enum ProxyServerStatus {
+    New,
+    Running(Runtime),
+    Stopped,
+}
+pub(crate) struct ProxyServer {
+    status: ProxyServerStatus,
     bind_port: u16,
     use_ipv6: bool,
-    command_receiver: Receiver<ProxyCommand>,
-    command_sender: Sender<ProxyCommand>,
+    command_receiver: Receiver<Command>,
+    command_sender: Sender<Command>,
+    thread_number: usize,
     manager: Option<JoinHandle<()>>,
 }
 
 impl ProxyServer {
-    pub(super) fn new(bind_port: u16, use_ipv6: bool) -> Result<Self> {
-        let mut runtime_builder = Builder::new_multi_thread();
-        runtime_builder.enable_all().worker_threads(256);
-        let runtime = runtime_builder.build()?;
-        let (command_sender, command_receiver) = tokio::sync::mpsc::channel(1024);
+    pub(crate) fn new(bind_port: u16, use_ipv6: bool, thread_number: usize) -> Result<Self> {
+        let (command_sender, command_receiver) = channel::<Command>();
         Ok(Self {
-            runtime,
+            status: ProxyServerStatus::New,
             bind_port,
             use_ipv6,
             command_receiver,
             command_sender,
             manager: None,
+            thread_number,
         })
     }
 
-    pub(super) fn send_command(self: Pin<&'static mut Self>, command: ProxyCommand) {
-        let this = self.project();
-        this.runtime.spawn(async {
-            if let Err(e) = this.command_sender.send(command).await {
-                error!("Fail to send proxy command because of error: {e:?}");
-            }
-        });
+    pub(crate) fn send_command(&self, command: Command) -> Result<(), SendError<Command>> {
+        self.command_sender.send(command)
     }
 
-    pub(super) fn run(self: Pin<&'static mut Self>) -> Result<()> {
-        let this = self.project();
-        this.runtime.spawn(async {
-            loop {
-                match this.command_receiver.recv().await {
-                    None => {
-                        return;
-                    },
-                    Some(command) => match command {
-                        ProxyCommand::Stop => {
-                            this.runtime.
-                            
+    pub(crate) fn run(mut self) -> Result<JoinHandle<()>> {
+        let command_receiver = self.command_receiver;
+        let manager = thread::spawn(move || loop {
+            match command_receiver.recv() {
+                Err(e) => {
+                    error!("Fail to receive proxy server command because of error: {e:?}");
+                    return;
+                },
+                Ok(command) => {
+                    info!("Receive proxy server command: {command:?}");
+                    match command {
+                        Command::StartServer => match self.status {
+                            status @ (ProxyServerStatus::New | ProxyServerStatus::Stopped) => {
+                                info!("Proxy server currently in {status:?} status, going to create async runtime.");
+                                let mut runtime_builder = Builder::new_multi_thread();
+                                runtime_builder.enable_all().worker_threads(self.thread_number);
+                                let runtime = match runtime_builder.build() {
+                                    Err(e) => {
+                                        error!("Fail to create proxy server async runtime because of error: {e:?}");
+                                        return;
+                                    },
+                                    Ok(v) => v,
+                                };
+                                runtime.block_on(async {
+                                    let binding_addr = if self.use_ipv6 {
+                                        format!("::1:{}", self.bind_port)
+                                    } else {
+                                        format!("0.0.0.0:{}", self.bind_port)
+                                    };
+                                    let tcp_listener = match TcpListener::bind(binding_addr.clone()).await {
+                                        Err(e) => {
+                                            error!("Fail to bind proxy server on address [{binding_addr}] because of error: {e:?}");
+                                            return;
+                                        },
+                                        Ok(v) => v,
+                                    };
+                                    info!("Proxy server started, success bind on address: {binding_addr}");
+                                    loop {
+                                        let (agent_tcp_stream, agent_tcp_socket_address) = match tcp_listener.accept().await {
+                                            Err(e) => return,
+                                            Ok(v) => v,
+                                        };
+                                    }
+                                });
+                                self.status = ProxyServerStatus::Running(runtime);
+                            },
+                            ProxyServerStatus::Running(_) => {
+                                error!("Ignore start command when proxy server is running.");
+                                continue;
+                            },
                         },
-                    },
-                }
-            }
-        });
-        this.runtime.block_on(async {
-            let binding_addr = if *this.use_ipv6 {
-                format!("::1:{}", this.bind_port)
-            } else {
-                format!("0.0.0.0:{}", this.bind_port)
+                        Command::StopServer => match self.status {
+                            ProxyServerStatus::New => return,
+                            ProxyServerStatus::Running(runtime) => {
+                                runtime.shutdown_timeout(Duration::from_secs(30));
+                                self.status = ProxyServerStatus::Stopped;
+                            },
+                            ProxyServerStatus::Stopped => return,
+                        },
+                    }
+                },
             };
-            let tcp_listener = TcpListener::bind(binding_addr.clone()).await?;
-            info!("Proxy server started, bind on address: {binding_addr}");
-            loop {
-                let (agent_tcp_stream, agent_tcp_socket_address) = tcp_listener.accept().await?;
-            }
-            Ok(())
-        })
+        });
+        Ok(manager)
     }
 }
