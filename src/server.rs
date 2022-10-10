@@ -33,7 +33,13 @@ pub(crate) struct ProxyServer {
     command_receiver: Receiver<Command>,
     command_sender: Sender<Command>,
     thread_number: usize,
-    manager: Option<JoinHandle<()>>,
+    _guard: Option<JoinHandle<()>>,
+}
+
+impl Drop for ProxyServer {
+    fn drop(&mut self) {
+        self._guard = None;
+    }
 }
 
 impl ProxyServer {
@@ -45,7 +51,7 @@ impl ProxyServer {
             use_ipv6,
             command_receiver,
             command_sender,
-            manager: None,
+            _guard: None,
             thread_number,
         })
     }
@@ -54,9 +60,9 @@ impl ProxyServer {
         self.command_sender.send(command)
     }
 
-    pub(crate) fn run(mut self) -> Result<JoinHandle<()>> {
+    pub(crate) fn run(mut self) -> Result<()> {
         let command_receiver = self.command_receiver;
-        let manager = thread::spawn(move || loop {
+        let _guard = thread::spawn(move || loop {
             match command_receiver.recv() {
                 Err(e) => {
                     error!("Fail to receive proxy server command because of error: {e:?}");
@@ -117,6 +123,7 @@ impl ProxyServer {
                 },
             };
         });
-        Ok(manager)
+        self._guard = Some(_guard);
+        Ok(())
     }
 }
